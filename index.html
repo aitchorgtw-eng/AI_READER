@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>圖片轉文字與語音</title>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <style>
+        body {
+            font-family: "Microsoft JhengHei", sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        #paste-area {
+            border: 2px dashed #ccc;
+            padding: 40px;
+            text-align: center;
+            color: #666;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            background-color: #fafafa;
+        }
+        #preview-img {
+            max-width: 100%;
+            max-height: 300px;
+            display: none;
+            margin: 10px auto;
+        }
+        textarea {
+            width: 100%;
+            height: 150px;
+            padding: 10px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            resize: vertical;
+            font-size: 16px;
+        }
+        .controls {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #status {
+            color: #d9534f;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>🖼️ 貼上圖片，幫你讀出文字</h2>
+    
+    <div id="paste-area">
+        請點擊這裡，然後按下 <strong>Ctrl + V</strong> (或 Cmd + V) 貼上包含文字的圖片
+        <img id="preview-img" alt="圖片預覽">
+    </div>
+
+    <div id="status"></div>
+
+    <h3 style="margin-top: 20px;">辨識結果：</h3>
+    <textarea id="result-text" placeholder="辨識出的文字會顯示在這裡..."></textarea>
+    
+    <div class="controls">
+        <button onclick="speakText()">🔊 唸出文字</button>
+        <button onclick="stopSpeaking()" style="background-color: #dc3545;">⏹️ 停止播放</button>
+    </div>
+</div>
+
+<script>
+    const pasteArea = document.getElementById('paste-area');
+    const previewImg = document.getElementById('preview-img');
+    const resultText = document.getElementById('result-text');
+    const statusMsg = document.getElementById('status');
+
+    // 監聽貼上事件
+    window.addEventListener('paste', async (e) => {
+        // 取得剪貼簿資料
+        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+        let imageFile = null;
+
+        // 尋找圖片檔案
+        for (let item of items) {
+            if (item.type.indexOf('image') !== -1) {
+                imageFile = item.getAsFile();
+                break;
+            }
+        }
+
+        if (imageFile) {
+            // 顯示圖片預覽
+            const imageUrl = URL.createObjectURL(imageFile);
+            previewImg.src = imageUrl;
+            previewImg.style.display = 'block';
+            
+            // 開始辨識文字
+            recognizeText(imageFile);
+        }
+    });
+
+    // 圖片轉文字 (OCR)
+    async function recognizeText(file) {
+        statusMsg.style.color = '#007bff';
+        // 第一次執行時會需要下載語言包，所以提示使用者稍候
+        statusMsg.innerText = '正在載入引擎並辨識文字中，請稍候... (初次執行可能需要幾秒鐘下載語言資料)';
+        resultText.value = '';
+
+        try {
+            // 使用 chi_tra (繁體中文) + eng (英文) 進行辨識
+            const worker = await Tesseract.createWorker('chi_tra+eng');
+            const ret = await worker.recognize(file);
+            await worker.terminate();
+
+            // 將結果填入文字區塊
+            const text = ret.data.text.trim();
+            if(text === '') {
+                statusMsg.style.color = '#d9534f';
+                statusMsg.innerText = '圖片中沒有辨識到文字。';
+            } else {
+                resultText.value = text;
+                statusMsg.style.color = 'green';
+                statusMsg.innerText = '辨識完成！正在為您朗讀...';
+                
+                // 自動唸出文字
+                speakText(text);
+            }
+        } catch (error) {
+            console.error(error);
+            statusMsg.style.color = '#d9534f';
+            statusMsg.innerText = '辨識過程發生錯誤。';
+        }
+    }
+
+    // 文字轉語音 (TTS)
+    function speakText(textToSpeak) {
+        // 如果沒有傳入文字，就抓 textarea 裡面的文字
+        const text = textToSpeak || resultText.value;
+        
+        if (!text) {
+            alert('沒有可以唸出的文字！');
+            return;
+        }
+
+        // 檢查瀏覽器是否支援
+        if ('speechSynthesis' in window) {
+            // 先停止正在播放的聲音
+            window.speechSynthesis.cancel(); 
+
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'zh-TW'; // 設定為台灣中文語音
+            utterance.rate = 1.0;     // 語速 (0.1 ~ 10)
+            utterance.pitch = 1.0;    // 音調 (0 ~ 2)
+
+            // 當朗讀結束時，清除狀態訊息
+            utterance.onend = function() {
+                if(statusMsg.innerText.includes('正在為您朗讀')) {
+                    statusMsg.innerText = '朗讀完畢。';
+                }
+            };
+
+            window.speechSynthesis.speak(utterance);
+        } else {
+            alert('您的瀏覽器不支援語音合成功能，建議使用最新版的 Chrome 或 Edge。');
+        }
+    }
+
+    // 停止語音
+    function stopSpeaking() {
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+        }
+    }
+</script>
+
+</body>
+</html>
