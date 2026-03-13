@@ -121,7 +121,32 @@
     </style>
 </head>
 <body>
+<div id="inapp-warning" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0, 0, 0, 0.9); z-index: 9999; color: white; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 20px; box-sizing: border-box;">
+    <h1 style="color: #ffc107; margin-bottom: 20px;">⚠️ 語音功能無法使用</h1>
+    <p style="font-size: 18px; line-height: 1.6; margin-bottom: 30px;">
+        您目前使用的是 LINE 或 Facebook 的內建瀏覽器，<br>
+        這會導致系統<b>無法發出聲音</b>。<br><br>
+        請點擊畫面<b>右上角或右下角的「選單 (⋮ 或 ⋯)」</b><br>
+        並選擇 <b>「以預設瀏覽器開啟」</b> 或 <b>「在 Chrome / Safari 中開啟」</b>。
+    </p>
+    <div style="font-size: 50px;">↗️ ↘️</div>
+</div>
 
+<script>
+    // 判斷是否為 APP 內建瀏覽器的函數
+    function isInAppBrowser() {
+        const ua = navigator.userAgent || navigator.vendor || window.opera;
+        // 偵測 LINE, FB, IG, Messenger 等常見內建瀏覽器
+        return /Line|FBAV|FBAN|Instagram|MicroMessenger/i.test(ua);
+    }
+
+    // 如果偵測到是內建瀏覽器，就顯示警告遮罩，並隱藏原本的內容
+    if (isInAppBrowser()) {
+        document.getElementById('inapp-warning').style.display = 'flex';
+        // 選擇性：把原本的容器隱藏起來，強迫他們一定要跳轉
+        document.querySelector('.container').style.display = 'none';
+    }
+</script>
 <div class="container">
     <h2>🖼️ 圖片文字讀取器</h2>
     
