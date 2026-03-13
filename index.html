@@ -162,10 +162,10 @@
 
     <div id="status"></div>
 
-    <h3>辨識結果：</h3>
+    <h3>辨識結果(或直接貼上文字)：</h3>
     <textarea id="result-text" placeholder="辨識出的文字會顯示在這裡..."></textarea>
     
-    <div class="controls">
+<div class="controls">
         <div class="settings-group">
             <label for="rate-slider"><strong>語速：</strong></label>
             <input type="range" id="rate-slider" min="0.5" max="2.0" step="0.1" value="1.0">
@@ -173,10 +173,173 @@
         </div>
 
         <div class="btn-group">
-            <button onclick="speakText()">🔊 唸出文字</button>
+            <button id="speak-btn" onclick="speakText()">🔊 唸出文字</button>
             <button onclick="stopSpeaking()" class="stop-btn">⏹️ 停止播放</button>
         </div>
     </div>
+</div>
+
+<script>
+    const pasteArea = document.getElementById('paste-area');
+    const previewImg = document.getElementById('preview-img');
+    const resultText = document.getElementById('result-text');
+    const statusMsg = document.getElementById('status');
+    const fileUpload = document.getElementById('file-upload');
+    const rateSlider = document.getElementById('rate-slider');
+    const rateValue = document.getElementById('rate-value');
+    const speakBtn = document.getElementById('speak-btn');
+
+    // 全域變數：用來控制長篇文章的分段朗讀狀態
+    let isSpeaking = false; 
+
+    function handleImage(imageFile) {
+        const imageUrl = URL.createObjectURL(imageFile);
+        previewImg.src = imageUrl;
+        previewImg.style.display = 'block';
+        recognizeText(imageFile);
+    }
+
+    fileUpload.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) handleImage(file);
+    });
+
+    window.addEventListener('paste', (e) => {
+        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+        for (let item of items) {
+            if (item.type.indexOf('image') !== -1) {
+                const imageFile = item.getAsFile();
+                handleImage(imageFile);
+                break;
+            }
+        }
+    });
+
+    rateSlider.addEventListener('input', (e) => {
+        rateValue.innerText = e.target.value + 'x';
+    });
+
+    async function recognizeText(file) {
+        statusMsg.style.color = '#007bff';
+        statusMsg.innerText = '正在載入引擎並辨識文字中，請稍候...';
+        resultText.value = '';
+        
+        // 辨識前先停止現有的語音
+        stopSpeaking();
+
+        try {
+            const worker = await Tesseract.createWorker('chi_tra+eng');
+            const ret = await worker.recognize(file);
+            await worker.terminate();
+
+            const text = ret.data.text.trim();
+            if(text === '') {
+                statusMsg.style.color = '#d9534f';
+                statusMsg.innerText = '圖片中沒有辨識到文字。';
+            } else {
+                resultText.value = text;
+                statusMsg.style.color = 'green';
+                statusMsg.innerText = '辨識完成！正在為您朗讀...';
+                
+                speakText(text);
+            }
+        } catch (error) {
+            console.error(error);
+            statusMsg.style.color = '#d9534f';
+            statusMsg.innerText = '辨識過程發生錯誤。';
+        }
+    }
+
+    // 重設按鈕狀態的函數
+    function resetSpeakButton() {
+        speakBtn.disabled = false;
+        speakBtn.innerText = '🔊 唸出文字';
+        speakBtn.style.backgroundColor = '#007bff';
+    }
+
+    // 升級版：支援長篇文章分段朗讀的 TTS
+    function speakText(textToSpeak) {
+        const text = textToSpeak || resultText.value;
+        
+        if (!text.trim()) {
+            alert('沒有可以唸出的文字！');
+            return;
+        }
+
+        if (!('speechSynthesis' in window)) {
+            alert('您的瀏覽器不支援語音功能。\n\n如果您是用 LINE 或 FB 打開此網頁，請點擊右上角/右下角的選單，選擇「以預設瀏覽器開啟」。');
+            return;
+        }
+
+        // 1. 初始化與防呆：先停止目前的語音，並鎖定按鈕
+        window.speechSynthesis.cancel();
+        isSpeaking = true;
+        speakBtn.disabled = true;
+        speakBtn.innerText = '⏳ 準備中...';
+        speakBtn.style.backgroundColor = '#6c757d'; // 變成灰色
+
+        // 2. 切割文章：利用「換行符號」將長文切成多個小段落，並過濾天空白行
+        const chunks = text.split('\n').filter(chunk => chunk.trim().length > 0);
+        let currentChunkIndex = 0;
+
+        // 3. 建立遞迴播放函數
+        function speakNextChunk() {
+            // 如果被強制停止，或者已經唸完了，就結束迴圈
+            if (!isSpeaking || currentChunkIndex >= chunks.length) {
+                isSpeaking = false;
+                resetSpeakButton();
+                if(currentChunkIndex >= chunks.length) {
+                    statusMsg.style.color = 'green';
+                    statusMsg.innerText = '✅ 朗讀完畢。';
+                }
+                return;
+            }
+
+            // 準備當前段落的語音
+            const utterance = new SpeechSynthesisUtterance(chunks[currentChunkIndex]);
+            utterance.lang = 'zh-TW'; 
+            utterance.rate = parseFloat(rateSlider.value); 
+            utterance.pitch = 1.0;
+
+            // 當這一段開始唸時，更新按鈕的進度顯示
+            utterance.onstart = function() {
+                speakBtn.innerText = `🔊 朗讀中 (${currentChunkIndex + 1}/${chunks.length})`;
+                statusMsg.style.color = '#007bff';
+                statusMsg.innerText = '正在為您朗讀...';
+            };
+
+            // 當這一段唸完時，自動呼叫下一段
+            utterance.onend = function() {
+                currentChunkIndex++;
+                speakNextChunk();
+            };
+
+            // 發生錯誤時（例如被瀏覽器中斷），嘗試跳到下一段
+            utterance.onerror = function(e) {
+                console.error('語音播放中斷或錯誤', e);
+                currentChunkIndex++;
+                speakNextChunk();
+            };
+
+            // 播放當前段落
+            window.speechSynthesis.speak(utterance);
+        }
+
+        // 開始播放第一段
+        speakNextChunk();
+    }
+
+    // 停止語音
+    function stopSpeaking() {
+        isSpeaking = false; // 改變標記，阻止播放下一段
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.cancel(); // 立即停止當前聲音
+        }
+        resetSpeakButton();
+        statusMsg.style.color = '#d9534f';
+        statusMsg.innerText = '⏹️ 已停止朗讀。';
+    }
+</script>
 </div>
 
 <script>
