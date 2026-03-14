@@ -3,337 +3,219 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>圖片轉文字與語音 (升級版)</title>
+    <title>圖片轉文字與智慧語音閱讀器</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
-        body {
-            font-family: "Microsoft JhengHei", sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
-            background-color: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
+        body { font-family: "Microsoft JhengHei", sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background-color: #f5f5f5; line-height: 1.6; }
+        .container { background-color: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .upload-section { display: flex; flex-direction: column; gap: 15px; margin-bottom: 20px; }
+        #paste-area { border: 2px dashed #ccc; padding: 20px; text-align: center; color: #666; border-radius: 8px; background-color: #fafafa; }
+        .upload-btn { display: inline-block; padding: 12px 20px; background-color: #28a745; color: white; text-align: center; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: bold; }
+        #file-upload { display: none; }
+        #preview-img { max-width: 100%; max-height: 300px; display: none; margin: 10px auto; border-radius: 4px; }
+        #status { color: #d9534f; font-weight: bold; margin-bottom: 15px; text-align: center;}
         
-        /* 拖曳/貼上區塊與上傳按鈕的整合設計 */
-        .upload-section {
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
+        /* 升級：控制面板改為置頂且懸浮 (Sticky) */
+        .controls { 
+            display: flex; 
+            flex-wrap: wrap; 
+            gap: 15px; 
+            align-items: center; 
+            background-color: #f8f9fa; 
+            padding: 15px; 
+            border-radius: 8px; 
             margin-bottom: 20px;
+            /* 懸浮魔法 */
+            position: sticky; 
+            top: 10px; 
+            z-index: 1000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            border: 1px solid #e0e0e0;
         }
-        #paste-area {
-            border: 2px dashed #ccc;
-            padding: 30px;
-            text-align: center;
-            color: #666;
-            border-radius: 8px;
-            background-color: #fafafa;
-        }
-        .upload-btn {
-            display: inline-block;
-            padding: 12px 20px;
-            background-color: #28a745;
-            color: white;
-            text-align: center;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 16px;
-            font-weight: bold;
-            transition: background-color 0.2s;
-        }
-        .upload-btn:hover {
-            background-color: #218838;
-        }
-        /* 隱藏預設的檔案上傳 input */
-        #file-upload {
-            display: none;
-        }
+        .settings-group { display: flex; align-items: center; gap: 10px; flex-grow: 1; }
+        button { padding: 10px 20px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold;}
+        button:hover { background-color: #0056b3; }
+        .stop-btn { background-color: #dc3545; }
 
-        #preview-img {
-            max-width: 100%;
-            max-height: 300px;
-            display: none;
-            margin: 10px auto;
-            border-radius: 4px;
+        /* 升級：限制文字區與閱讀區的高度，讓它們擁有內部捲動軸 */
+        textarea { 
+            width: 100%; 
+            height: 200px; 
+            max-height: 50vh; /* 最高不超過螢幕的一半 */
+            overflow-y: auto; /* 內容過長時出現捲動軸 */
+            padding: 15px; 
+            box-sizing: border-box; 
+            border: 1px solid #ccc; 
+            border-radius: 4px; 
+            resize: vertical; 
+            font-size: 16px; 
+            margin-bottom: 10px; 
         }
-        textarea {
-            width: 100%;
-            height: 150px;
-            padding: 10px;
-            box-sizing: border-box;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            resize: vertical;
-            font-size: 16px;
+        #reading-area { 
+            display: none; 
+            padding: 15px; 
+            background-color: #fffde7; 
+            border-left: 4px solid #ffc107; 
+            border-radius: 4px; 
+            margin-bottom: 15px; 
+            font-size: 18px; 
+            max-height: 55vh; /* 最高不超過螢幕的 55% */
+            overflow-y: auto; /* 內容過長時出現捲動軸 */
+            scroll-behavior: smooth; /* 讓跳轉跟自動捲動更平滑 */
         }
         
-        /* 控制區塊設計 */
-        .controls {
-            margin-top: 15px;
-            display: flex;
-            flex-wrap: wrap; /* 讓手機版版面能自動換行 */
-            gap: 15px;
-            align-items: center;
-            background-color: #f8f9fa;
-            padding: 15px;
-            border-radius: 8px;
-        }
-        .settings-group {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            flex-grow: 1;
-        }
-        .btn-group {
-            display: flex;
-            gap: 10px;
-        }
-        button {
-            padding: 10px 20px;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
-            white-space: nowrap;
-        }
-        button:hover {
-            background-color: #0056b3;
-        }
-        .stop-btn {
-            background-color: #dc3545;
-        }
-        .stop-btn:hover {
-            background-color: #c82333;
-        }
-        #status {
-            color: #d9534f;
-            font-weight: bold;
-            margin-bottom: 15px;
-        }
+        .text-chunk { cursor: pointer; transition: background-color 0.2s; border-radius: 3px; }
+        .text-chunk:hover { background-color: #e0e0e0; }
+        .highlight { background-color: #ffeb3b; font-weight: bold; color: #d32f2f; }
     </style>
 </head>
 <body>
-<div id="inapp-warning" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0, 0, 0, 0.9); z-index: 9999; color: white; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 20px; box-sizing: border-box;">
-    <h1 style="color: #ffc107; margin-bottom: 20px;">⚠️ 語音功能無法使用</h1>
-    <p style="font-size: 18px; line-height: 1.6; margin-bottom: 30px;">
-        您目前使用的是 LINE 或 Facebook 的內建瀏覽器，<br>
-        這會導致系統<b>無法發出聲音</b>。<br><br>
-        請點擊畫面<b>右上角或右下角的「選單 (⋮ 或 ⋯)」</b><br>
-        並選擇 <b>「以預設瀏覽器開啟」</b> 或 <b>「在 Chrome / Safari 中開啟」</b>。
-    </p>
-    <div style="font-size: 50px;">↗️ ↘️</div>
-</div>
 
-<script>
-    // 判斷是否為 APP 內建瀏覽器的函數
-    function isInAppBrowser() {
-        const ua = navigator.userAgent || navigator.vendor || window.opera;
-        // 偵測 LINE, FB, IG, Messenger 等常見內建瀏覽器
-        return /Line|FBAV|FBAN|Instagram|MicroMessenger/i.test(ua);
-    }
-
-    // 如果偵測到是內建瀏覽器，就顯示警告遮罩，並隱藏原本的內容
-    if (isInAppBrowser()) {
-        document.getElementById('inapp-warning').style.display = 'flex';
-        // 選擇性：把原本的容器隱藏起來，強迫他們一定要跳轉
-        document.querySelector('.container').style.display = 'none';
-    }
-</script>
 <div class="container">
-    <h2>🖼️ 圖片文字讀取器</h2>
+    <h2>📖 智慧文字閱讀器</h2>
     
     <div class="upload-section">
-        <label for="file-upload" class="upload-btn">📁 從裝置選擇圖片 (或拍照)</label>
+        <label for="file-upload" class="upload-btn">📁 從裝置選擇圖片 (辨識印刷體)</label>
         <input type="file" id="file-upload" accept="image/*">
-
         <div id="paste-area">
-            電腦版也可以直接在這裡按下 <strong>Ctrl + V</strong> 貼上圖片
-            <img id="preview-img" alt="圖片預覽">
+            電腦版可直接在這裡 <strong>Ctrl + V</strong> 貼上圖片
+            <img id="preview-img">
         </div>
     </div>
 
     <div id="status"></div>
 
-    <h3>辨識結果(或直接貼上文字)：</h3>
-    <textarea id="result-text" placeholder="辨識出的文字會顯示在這裡..."></textarea>
     <div class="controls">
         <div class="settings-group">
             <label for="rate-slider"><strong>語速：</strong></label>
             <input type="range" id="rate-slider" min="0.5" max="2.0" step="0.1" value="1.0">
             <span id="rate-value">1.0x</span>
         </div>
-
         <div class="btn-group">
-            <button id="speak-btn" onclick="toggleSpeak()">🔊 唸出文字</button>
-            <button onclick="stopSpeaking()" class="stop-btn">⏹️ 停止播放</button>
+            <button id="speak-btn" onclick="toggleSpeak()">🔊 開始導讀</button>
+            <button onclick="stopSpeaking()" class="stop-btn">⏹️ 停止</button>
+        </div>
+        <div style="width: 100%; font-size: 14px; color: #666; margin-top: 5px;">
+            💡 提示：導讀開始後，可直接點擊下方文字跳段播放。
         </div>
     </div>
+
+    <h3>📝 文字內容：(可貼上長篇文章)</h3>
+    <textarea id="result-text" placeholder="將需要朗讀的文章貼在這裡..."></textarea>
+    
+    <div id="reading-area"></div>
+
 </div>
 
 <script>
-    const pasteArea = document.getElementById('paste-area');
-    const previewImg = document.getElementById('preview-img');
     const resultText = document.getElementById('result-text');
+    const readingArea = document.getElementById('reading-area');
     const statusMsg = document.getElementById('status');
-    const fileUpload = document.getElementById('file-upload');
     const rateSlider = document.getElementById('rate-slider');
-    const rateValue = document.getElementById('rate-value');
     const speakBtn = document.getElementById('speak-btn');
-
-    // 全域變數：精確控制播放與暫停狀態
+    
     let isSpeaking = false; 
-    let isPaused = false;
     let chunks = [];
     let currentChunkIndex = 0;
+    let wakeLock = null; 
 
-    function handleImage(imageFile) {
-        const imageUrl = URL.createObjectURL(imageFile);
-        previewImg.src = imageUrl;
-        previewImg.style.display = 'block';
-        recognizeText(imageFile);
-    }
-
-    fileUpload.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (file) handleImage(file);
-    });
-
-    window.addEventListener('paste', (e) => {
-        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-        for (let item of items) {
-            if (item.type.indexOf('image') !== -1) {
-                const imageFile = item.getAsFile();
-                handleImage(imageFile);
-                break;
-            }
-        }
-    });
-
-    rateSlider.addEventListener('input', (e) => {
-        rateValue.innerText = e.target.value + 'x';
-    });
-
-    async function recognizeText(file) {
-        statusMsg.style.color = '#007bff';
-        statusMsg.innerText = '正在載入引擎並辨識文字中，請稍候...';
-        resultText.value = '';
-        
-        stopSpeaking();
-
+    async function requestWakeLock() {
         try {
-            const worker = await Tesseract.createWorker('chi_tra+eng');
-            const ret = await worker.recognize(file);
-            await worker.terminate();
-
-            const text = ret.data.text.trim();
-            if(text === '') {
-                statusMsg.style.color = '#d9534f';
-                statusMsg.innerText = '圖片中沒有辨識到文字。';
-            } else {
-                resultText.value = text;
-                statusMsg.style.color = 'green';
-                statusMsg.innerText = '辨識完成！正在為您朗讀...';
-                
-                toggleSpeak(text);
-            }
-        } catch (error) {
-            console.error(error);
-            statusMsg.style.color = '#d9534f';
-            statusMsg.innerText = '辨識過程發生錯誤。';
-        }
+            if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
+        } catch (err) { console.log('螢幕防休眠未啟用:', err); }
+    }
+    function releaseWakeLock() {
+        if (wakeLock !== null) wakeLock.release().then(() => wakeLock = null);
     }
 
-    // 重設按鈕外觀的函數
-    function resetSpeakButton() {
-        speakBtn.innerText = '🔊 唸出文字';
-        speakBtn.style.backgroundColor = '#007bff';
-        speakBtn.style.color = 'white';
-    }
+    rateSlider.addEventListener('input', (e) => { document.getElementById('rate-value').innerText = e.target.value + 'x'; });
 
-    // 核心播放控制：處理 播放 / 暫停 / 繼續
-    function toggleSpeak(textToSpeak) {
-        const text = textToSpeak || resultText.value;
+    function renderReadingArea(text) {
+        readingArea.innerHTML = '';
+        chunks = text.match(/[^。！？\n]+[。！？\n]*/g) || [text];
         
-        if (!text.trim()) {
-            alert('沒有可以唸出的文字！');
-            return;
-        }
+        chunks.forEach((chunk, index) => {
+            if(chunk.trim() === '') return;
+            let span = document.createElement('span');
+            span.innerText = chunk;
+            span.className = 'text-chunk';
+            span.id = 'chunk-' + index;
+            span.onclick = () => jumpToPlay(index);
+            readingArea.appendChild(span);
+        });
+        
+        readingArea.style.display = 'block';
+        resultText.style.display = 'none'; 
+    }
 
-        if (!('speechSynthesis' in window)) {
-            alert('您的瀏覽器不支援語音功能。\n\n如果您是用 LINE 或 FB 打開此網頁，請點擊右上角/右下角的選單，選擇「以預設瀏覽器開啟」。');
-            return;
+    function highlightChunk(index) {
+        document.querySelectorAll('.text-chunk').forEach(el => el.classList.remove('highlight'));
+        const currentEl = document.getElementById('chunk-' + index);
+        if (currentEl) {
+            currentEl.classList.add('highlight');
+            // 修改捲動邏輯：讓閱讀框的內部自動往下捲，不會影響外部畫面
+            readingArea.scrollTo({
+                top: currentEl.offsetTop - readingArea.offsetTop - 50,
+                behavior: 'smooth'
+            });
         }
+    }
 
-        // 狀態 1：正在播放中 -> 執行「暫停」
-        if (isSpeaking && !isPaused) {
-            window.speechSynthesis.pause();
-            isPaused = true;
-            speakBtn.innerText = `▶️ 繼續播放 (${currentChunkIndex + 1}/${chunks.length})`;
-            speakBtn.style.backgroundColor = '#28a745'; // 變成綠色提示可繼續
+    function jumpToPlay(index) {
+        window.speechSynthesis.cancel(); 
+        currentChunkIndex = index;
+        isSpeaking = true;
+        speakBtn.innerText = `⏸️ 暫停`;
+        speakBtn.style.backgroundColor = '#ffc107';
+        speakBtn.style.color = 'black';
+        speakNextChunk();
+    }
+
+    function toggleSpeak() {
+        const text = resultText.value.trim();
+        if (!text) { alert('沒有文字！請先貼上文章或辨識圖片。'); return; }
+
+        if (isSpeaking) {
+            window.speechSynthesis.cancel();
+            isSpeaking = false;
+            releaseWakeLock();
+            speakBtn.innerText = `▶️ 繼續播放`;
+            speakBtn.style.backgroundColor = '#28a745';
             speakBtn.style.color = 'white';
-            statusMsg.style.color = '#ff9800';
             statusMsg.innerText = '⏸️ 語音已暫停';
             return;
         }
 
-        // 狀態 2：暫停中 -> 執行「繼續播放」
-        if (isSpeaking && isPaused) {
-            window.speechSynthesis.resume();
-            isPaused = false;
-            speakBtn.innerText = `⏸️ 暫停 (${currentChunkIndex + 1}/${chunks.length})`;
-            speakBtn.style.backgroundColor = '#ffc107'; // 變成黃色提示可暫停
-            speakBtn.style.color = 'black';
-            statusMsg.style.color = '#007bff';
-            statusMsg.innerText = '正在為您朗讀...';
-            return;
-        }
-
-        // 狀態 3：全新開始播放
-        window.speechSynthesis.cancel();
+        requestWakeLock();
         isSpeaking = true;
-        isPaused = false;
+        speakBtn.innerText = `⏸️ 暫停`;
+        speakBtn.style.backgroundColor = '#ffc107';
+        speakBtn.style.color = 'black';
+        statusMsg.innerText = '🔊 正在為您朗讀...';
 
-        // 將文章依換行符號切割成陣列
-        chunks = text.split('\n').filter(chunk => chunk.trim().length > 0);
-        currentChunkIndex = 0;
-
+        if (currentChunkIndex === 0 || currentChunkIndex >= chunks.length) {
+            renderReadingArea(text);
+            currentChunkIndex = 0;
+        }
+        
         speakNextChunk();
     }
 
-    // 分段朗讀的遞迴函數
     function speakNextChunk() {
         if (!isSpeaking || currentChunkIndex >= chunks.length) {
-            isSpeaking = false;
-            isPaused = false;
-            resetSpeakButton();
             if(currentChunkIndex >= chunks.length && chunks.length > 0) {
+                stopSpeaking();
                 statusMsg.style.color = 'green';
                 statusMsg.innerText = '✅ 朗讀完畢。';
             }
             return;
         }
 
+        highlightChunk(currentChunkIndex);
+        
         const utterance = new SpeechSynthesisUtterance(chunks[currentChunkIndex]);
         utterance.lang = 'zh-TW'; 
         utterance.rate = parseFloat(rateSlider.value); 
-        utterance.pitch = 1.0;
-
-        utterance.onstart = function() {
-            // 確保介面顯示為「可暫停」狀態
-            if(!isPaused) {
-                speakBtn.innerText = `⏸️ 暫停 (${currentChunkIndex + 1}/${chunks.length})`;
-                speakBtn.style.backgroundColor = '#ffc107'; // 黃色
-                speakBtn.style.color = 'black';
-            }
-        };
 
         utterance.onend = function() {
             currentChunkIndex++;
@@ -341,7 +223,6 @@
         };
 
         utterance.onerror = function(e) {
-            // 如果是被手動 cancel 停止的，就不做處理；否則跳下一段
             if (e.error !== 'canceled' && e.error !== 'interrupted') {
                 currentChunkIndex++;
                 speakNextChunk();
@@ -351,296 +232,51 @@
         window.speechSynthesis.speak(utterance);
     }
 
-    // 徹底停止語音並重置
     function stopSpeaking() {
         isSpeaking = false; 
-        isPaused = false;
-        if ('speechSynthesis' in window) {
-            window.speechSynthesis.cancel(); 
-        }
-        resetSpeakButton();
-        statusMsg.style.color = '#d9534f';
-        statusMsg.innerText = '⏹️ 已停止朗讀。下次將從頭開始。';
-    }
-</script>
-
-</div>
-
-<script>
-    const pasteArea = document.getElementById('paste-area');
-    const previewImg = document.getElementById('preview-img');
-    const resultText = document.getElementById('result-text');
-    const statusMsg = document.getElementById('status');
-    const fileUpload = document.getElementById('file-upload');
-    const rateSlider = document.getElementById('rate-slider');
-    const rateValue = document.getElementById('rate-value');
-    const speakBtn = document.getElementById('speak-btn');
-
-    // 全域變數：用來控制長篇文章的分段朗讀狀態
-    let isSpeaking = false; 
-
-    function handleImage(imageFile) {
-        const imageUrl = URL.createObjectURL(imageFile);
-        previewImg.src = imageUrl;
-        previewImg.style.display = 'block';
-        recognizeText(imageFile);
-    }
-
-    fileUpload.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (file) handleImage(file);
-    });
-
-    window.addEventListener('paste', (e) => {
-        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-        for (let item of items) {
-            if (item.type.indexOf('image') !== -1) {
-                const imageFile = item.getAsFile();
-                handleImage(imageFile);
-                break;
-            }
-        }
-    });
-
-    rateSlider.addEventListener('input', (e) => {
-        rateValue.innerText = e.target.value + 'x';
-    });
-
-    async function recognizeText(file) {
-        statusMsg.style.color = '#007bff';
-        statusMsg.innerText = '正在載入引擎並辨識文字中，請稍候...';
-        resultText.value = '';
+        currentChunkIndex = 0;
+        releaseWakeLock();
+        window.speechSynthesis.cancel(); 
+        document.querySelectorAll('.text-chunk').forEach(el => el.classList.remove('highlight'));
         
-        // 辨識前先停止現有的語音
-        stopSpeaking();
-
-        try {
-            const worker = await Tesseract.createWorker('chi_tra+eng');
-            const ret = await worker.recognize(file);
-            await worker.terminate();
-
-            const text = ret.data.text.trim();
-            if(text === '') {
-                statusMsg.style.color = '#d9534f';
-                statusMsg.innerText = '圖片中沒有辨識到文字。';
-            } else {
-                resultText.value = text;
-                statusMsg.style.color = 'green';
-                statusMsg.innerText = '辨識完成！正在為您朗讀...';
-                
-                speakText(text);
-            }
-        } catch (error) {
-            console.error(error);
-            statusMsg.style.color = '#d9534f';
-            statusMsg.innerText = '辨識過程發生錯誤。';
-        }
-    }
-
-    // 重設按鈕狀態的函數
-    function resetSpeakButton() {
-        speakBtn.disabled = false;
-        speakBtn.innerText = '🔊 唸出文字';
+        speakBtn.innerText = '🔊 開始導讀';
         speakBtn.style.backgroundColor = '#007bff';
-    }
-
-    // 升級版：支援長篇文章分段朗讀的 TTS
-    function speakText(textToSpeak) {
-        const text = textToSpeak || resultText.value;
-        
-        if (!text.trim()) {
-            alert('沒有可以唸出的文字！');
-            return;
-        }
-
-        if (!('speechSynthesis' in window)) {
-            alert('您的瀏覽器不支援語音功能。\n\n如果您是用 LINE 或 FB 打開此網頁，請點擊右上角/右下角的選單，選擇「以預設瀏覽器開啟」。');
-            return;
-        }
-
-        // 1. 初始化與防呆：先停止目前的語音，並鎖定按鈕
-        window.speechSynthesis.cancel();
-        isSpeaking = true;
-        speakBtn.disabled = true;
-        speakBtn.innerText = '⏳ 準備中...';
-        speakBtn.style.backgroundColor = '#6c757d'; // 變成灰色
-
-        // 2. 切割文章：利用「換行符號」將長文切成多個小段落，並過濾天空白行
-        const chunks = text.split('\n').filter(chunk => chunk.trim().length > 0);
-        let currentChunkIndex = 0;
-
-        // 3. 建立遞迴播放函數
-        function speakNextChunk() {
-            // 如果被強制停止，或者已經唸完了，就結束迴圈
-            if (!isSpeaking || currentChunkIndex >= chunks.length) {
-                isSpeaking = false;
-                resetSpeakButton();
-                if(currentChunkIndex >= chunks.length) {
-                    statusMsg.style.color = 'green';
-                    statusMsg.innerText = '✅ 朗讀完畢。';
-                }
-                return;
-            }
-
-            // 準備當前段落的語音
-            const utterance = new SpeechSynthesisUtterance(chunks[currentChunkIndex]);
-            utterance.lang = 'zh-TW'; 
-            utterance.rate = parseFloat(rateSlider.value); 
-            utterance.pitch = 1.0;
-
-            // 當這一段開始唸時，更新按鈕的進度顯示
-            utterance.onstart = function() {
-                speakBtn.innerText = `🔊 朗讀中 (${currentChunkIndex + 1}/${chunks.length})`;
-                statusMsg.style.color = '#007bff';
-                statusMsg.innerText = '正在為您朗讀...';
-            };
-
-            // 當這一段唸完時，自動呼叫下一段
-            utterance.onend = function() {
-                currentChunkIndex++;
-                speakNextChunk();
-            };
-
-            // 發生錯誤時（例如被瀏覽器中斷），嘗試跳到下一段
-            utterance.onerror = function(e) {
-                console.error('語音播放中斷或錯誤', e);
-                currentChunkIndex++;
-                speakNextChunk();
-            };
-
-            // 播放當前段落
-            window.speechSynthesis.speak(utterance);
-        }
-
-        // 開始播放第一段
-        speakNextChunk();
-    }
-
-    // 停止語音
-    function stopSpeaking() {
-        isSpeaking = false; // 改變標記，阻止播放下一段
-        if ('speechSynthesis' in window) {
-            window.speechSynthesis.cancel(); // 立即停止當前聲音
-        }
-        resetSpeakButton();
+        speakBtn.style.color = 'white';
         statusMsg.style.color = '#d9534f';
-        statusMsg.innerText = '⏹️ 已停止朗讀。';
-    }
-</script>
-</div>
-
-<script>
-    const pasteArea = document.getElementById('paste-area');
-    const previewImg = document.getElementById('preview-img');
-    const resultText = document.getElementById('result-text');
-    const statusMsg = document.getElementById('status');
-    const fileUpload = document.getElementById('file-upload');
-    const rateSlider = document.getElementById('rate-slider');
-    const rateValue = document.getElementById('rate-value');
-
-    // 處理圖片顯示與辨識的共用函數
-    function handleImage(imageFile) {
-        // 顯示圖片預覽
-        const imageUrl = URL.createObjectURL(imageFile);
-        previewImg.src = imageUrl;
-        previewImg.style.display = 'block';
+        statusMsg.innerText = '';
         
-        // 開始辨識文字
-        recognizeText(imageFile);
+        readingArea.style.display = 'none';
+        resultText.style.display = 'block'; 
     }
 
-    // 監聽：選擇檔案上傳 (支援手機拍照或相簿)
-    fileUpload.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            handleImage(file);
-        }
+    // --- 圖片辨識邏輯維持不變 ---
+    document.getElementById('file-upload').addEventListener('change', (e) => {
+        if (e.target.files[0]) handleImage(e.target.files[0]);
     });
-
-    // 監聽：貼上事件 (支援電腦版 Ctrl+V)
     window.addEventListener('paste', (e) => {
-        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-        for (let item of items) {
-            if (item.type.indexOf('image') !== -1) {
-                const imageFile = item.getAsFile();
-                handleImage(imageFile);
-                break;
-            }
+        for (let item of (e.clipboardData || e.originalEvent.clipboardData).items) {
+            if (item.type.indexOf('image') !== -1) { handleImage(item.getAsFile()); break; }
         }
     });
-
-    // 監聽：語速拉桿數值變化
-    rateSlider.addEventListener('input', (e) => {
-        rateValue.innerText = e.target.value + 'x';
-    });
-
-    // 圖片轉文字 (OCR)
+    function handleImage(file) {
+        document.getElementById('preview-img').src = URL.createObjectURL(file);
+        document.getElementById('preview-img').style.display = 'block';
+        recognizeText(file);
+    }
     async function recognizeText(file) {
-        statusMsg.style.color = '#007bff';
-        statusMsg.innerText = '正在載入引擎並辨識文字中，請稍候...';
-        resultText.value = '';
-
+        statusMsg.innerText = '⏳ 正在辨識圖片文字中...';
         try {
             const worker = await Tesseract.createWorker('chi_tra+eng');
             const ret = await worker.recognize(file);
             await worker.terminate();
-
-            const text = ret.data.text.trim();
-            if(text === '') {
-                statusMsg.style.color = '#d9534f';
-                statusMsg.innerText = '圖片中沒有辨識到文字。';
-            } else {
-                resultText.value = text;
+            if(ret.data.text.trim() === '') statusMsg.innerText = '⚠️ 找不到文字';
+            else {
+                resultText.value = ret.data.text.trim();
                 statusMsg.style.color = 'green';
-                statusMsg.innerText = '辨識完成！正在為您朗讀...';
-                
-                speakText(text);
+                statusMsg.innerText = '✅ 辨識完成！可點擊開始導讀。';
             }
-        } catch (error) {
-            console.error(error);
-            statusMsg.style.color = '#d9534f';
-            statusMsg.innerText = '辨識過程發生錯誤。';
-        }
-    }
-
-    // 文字轉語音 (TTS)
-    function speakText(textToSpeak) {
-        const text = textToSpeak || resultText.value;
-        
-        if (!text) {
-            alert('沒有可以唸出的文字！');
-            return;
-        }
-
-        if ('speechSynthesis' in window) {
-            window.speechSynthesis.cancel(); 
-
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = 'zh-TW'; 
-            
-            // 讀取拉桿的數值設定語速
-            utterance.rate = parseFloat(rateSlider.value); 
-            utterance.pitch = 1.0;
-
-            utterance.onend = function() {
-                if(statusMsg.innerText.includes('正在為您朗讀')) {
-                    statusMsg.innerText = '朗讀完畢。';
-                }
-            };
-
-            window.speechSynthesis.speak(utterance);
-     } else {
-            alert('您的瀏覽器不支援語音功能。\n\n如果您是用 LINE 或 FB 打開此網頁，請點擊右上角/右下角的選單，選擇「以預設瀏覽器開啟」(或用 Chrome / Safari 開啟) 就能正常使用了！');
-        }
-    }
-
-    // 停止語音
-    function stopSpeaking() {
-        if ('speechSynthesis' in window) {
-            window.speechSynthesis.cancel();
-        }
+        } catch (error) { statusMsg.innerText = '❌ 辨識過程發生錯誤。'; }
     }
 </script>
-
 </body>
 </html>
