@@ -12,10 +12,27 @@
         #paste-area { border: 2px dashed #ccc; padding: 20px; text-align: center; color: #666; border-radius: 8px; background-color: #fafafa; }
         .upload-btn { display: inline-block; padding: 12px 20px; background-color: #28a745; color: white; text-align: center; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: bold; }
         #file-upload { display: none; }
-        #preview-img { max-width: 100%; max-height: 300px; display: none; margin: 10px auto; border-radius: 4px; }
+        
+        /* 升級：多張圖片預覽區的排版 */
+        #preview-container { 
+            display: flex; 
+            flex-wrap: wrap; 
+            gap: 10px; 
+            margin-top: 15px; 
+            justify-content: center; 
+        }
+        .preview-img { 
+            max-width: 120px; 
+            max-height: 120px; 
+            object-fit: contain; 
+            border: 1px solid #ddd; 
+            border-radius: 4px; 
+            background-color: white;
+            padding: 2px;
+        }
+
         #status { color: #d9534f; font-weight: bold; margin-bottom: 15px; text-align: center;}
         
-        /* 升級：控制面板改為置頂且懸浮 (Sticky) */
         .controls { 
             display: flex; 
             flex-wrap: wrap; 
@@ -25,7 +42,6 @@
             padding: 15px; 
             border-radius: 8px; 
             margin-bottom: 20px;
-            /* 懸浮魔法 */
             position: sticky; 
             top: 10px; 
             z-index: 1000;
@@ -37,12 +53,11 @@
         button:hover { background-color: #0056b3; }
         .stop-btn { background-color: #dc3545; }
 
-        /* 升級：限制文字區與閱讀區的高度，讓它們擁有內部捲動軸 */
         textarea { 
             width: 100%; 
             height: 200px; 
-            max-height: 50vh; /* 最高不超過螢幕的一半 */
-            overflow-y: auto; /* 內容過長時出現捲動軸 */
+            max-height: 50vh; 
+            overflow-y: auto; 
             padding: 15px; 
             box-sizing: border-box; 
             border: 1px solid #ccc; 
@@ -59,9 +74,9 @@
             border-radius: 4px; 
             margin-bottom: 15px; 
             font-size: 18px; 
-            max-height: 55vh; /* 最高不超過螢幕的 55% */
-            overflow-y: auto; /* 內容過長時出現捲動軸 */
-            scroll-behavior: smooth; /* 讓跳轉跟自動捲動更平滑 */
+            max-height: 55vh; 
+            overflow-y: auto; 
+            scroll-behavior: smooth; 
         }
         
         .text-chunk { cursor: pointer; transition: background-color 0.2s; border-radius: 3px; }
@@ -75,11 +90,11 @@
     <h2>📖 智慧文字閱讀器</h2>
     
     <div class="upload-section">
-        <label for="file-upload" class="upload-btn">📁 從裝置選擇圖片 (辨識印刷體)</label>
-        <input type="file" id="file-upload" accept="image/*">
+        <label for="file-upload" class="upload-btn">📁 選擇多張圖片 (建議 1~5 張,最多5張)</label>
+        <input type="file" id="file-upload" accept="image/*" multiple>
         <div id="paste-area">
-            電腦版可直接在這裡 <strong>Ctrl + V</strong> 貼上圖片
-            <img id="preview-img">
+            電腦版也可直接 <strong>Ctrl + V</strong> 貼上圖片
+            <div id="preview-container"></div>
         </div>
     </div>
 
@@ -100,8 +115,8 @@
         </div>
     </div>
 
-    <h3>📝 文字內容：(可貼上長篇文章)</h3>
-    <textarea id="result-text" placeholder="將需要朗讀的文章貼在這裡..."></textarea>
+    <h3>📝 文字內容：</h3>
+    <textarea id="result-text" placeholder="辨識結果會拼接在這裡，也可手動修改..."></textarea>
     
     <div id="reading-area"></div>
 
@@ -113,6 +128,7 @@
     const statusMsg = document.getElementById('status');
     const rateSlider = document.getElementById('rate-slider');
     const speakBtn = document.getElementById('speak-btn');
+    const previewContainer = document.getElementById('preview-container');
     
     let isSpeaking = false; 
     let chunks = [];
@@ -153,7 +169,6 @@
         const currentEl = document.getElementById('chunk-' + index);
         if (currentEl) {
             currentEl.classList.add('highlight');
-            // 修改捲動邏輯：讓閱讀框的內部自動往下捲，不會影響外部畫面
             readingArea.scrollTo({
                 top: currentEl.offsetTop - readingArea.offsetTop - 50,
                 behavior: 'smooth'
@@ -249,33 +264,79 @@
         resultText.style.display = 'block'; 
     }
 
-    // --- 圖片辨識邏輯維持不變 ---
+    // --- 升級：多圖辨識邏輯 ---
     document.getElementById('file-upload').addEventListener('change', (e) => {
-        if (e.target.files[0]) handleImage(e.target.files[0]);
+        // 將選擇的檔案轉為陣列，並限制最多 5 張（保護手機記憶體）
+        const files = Array.from(e.target.files).slice(0, 5);
+        if (files.length > 0) handleMultipleImages(files);
     });
+
     window.addEventListener('paste', (e) => {
-        for (let item of (e.clipboardData || e.originalEvent.clipboardData).items) {
-            if (item.type.indexOf('image') !== -1) { handleImage(item.getAsFile()); break; }
-        }
-    });
-    function handleImage(file) {
-        document.getElementById('preview-img').src = URL.createObjectURL(file);
-        document.getElementById('preview-img').style.display = 'block';
-        recognizeText(file);
-    }
-    async function recognizeText(file) {
-        statusMsg.innerText = '⏳ 正在辨識圖片文字中...';
-        try {
-            const worker = await Tesseract.createWorker('chi_tra+eng');
-            const ret = await worker.recognize(file);
-            await worker.terminate();
-            if(ret.data.text.trim() === '') statusMsg.innerText = '⚠️ 找不到文字';
-            else {
-                resultText.value = ret.data.text.trim();
-                statusMsg.style.color = 'green';
-                statusMsg.innerText = '✅ 辨識完成！可點擊開始導讀。';
+        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+        const files = [];
+        for (let item of items) {
+            if (item.type.indexOf('image') !== -1) {
+                files.push(item.getAsFile());
             }
-        } catch (error) { statusMsg.innerText = '❌ 辨識過程發生錯誤。'; }
+        }
+        if (files.length > 0) handleMultipleImages(files.slice(0, 5));
+    });
+
+    async function handleMultipleImages(files) {
+        // 清空前一次的預覽圖與文字
+        previewContainer.innerHTML = '';
+        resultText.value = '';
+        stopSpeaking(); // 確保語音停止
+
+        // 顯示所有選擇的圖片預覽
+        files.forEach(file => {
+            const img = document.createElement('img');
+            img.src = URL.createObjectURL(file);
+            img.className = 'preview-img';
+            previewContainer.appendChild(img);
+        });
+
+        // 進入批次辨識
+        await recognizeMultipleTexts(files);
+    }
+
+    async function recognizeMultipleTexts(files) {
+        statusMsg.style.color = '#007bff';
+        statusMsg.innerText = `⏳ 準備載入引擎，共需辨識 ${files.length} 張圖片...`;
+        
+        try {
+            // 共用同一個 AI 引擎 (大幅提升多圖處理速度)
+            const worker = await Tesseract.createWorker('chi_tra+eng');
+            let combinedText = '';
+
+            // 依序處理每一張圖
+            for (let i = 0; i < files.length; i++) {
+                statusMsg.innerText = `⏳ 正在辨識第 ${i + 1} / ${files.length} 張圖片中...`;
+                const ret = await worker.recognize(files[i]);
+                const text = ret.data.text.trim();
+                
+                if (text) {
+                    // 將新辨識出的文字加上換行，接在原有文字後面
+                    combinedText += text + '\n\n';
+                    resultText.value = combinedText; 
+                }
+            }
+            
+            // 全部處理完畢後才關閉引擎
+            await worker.terminate();
+            
+            if(combinedText.trim() === '') {
+                statusMsg.style.color = '#d9534f';
+                statusMsg.innerText = '⚠️ 圖片中找不到任何文字';
+            } else {
+                statusMsg.style.color = 'green';
+                statusMsg.innerText = `✅ ${files.length} 張圖片辨識完成！可點擊開始導讀。`;
+            }
+        } catch (error) {
+            console.error(error);
+            statusMsg.style.color = '#d9534f';
+            statusMsg.innerText = '❌ 辨識過程發生錯誤，請重新整理網頁再試。';
+        }
     }
 </script>
 </body>
